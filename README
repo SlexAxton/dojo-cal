@@ -1,1 +1,3 @@
 Dojo calendar is a set of modules for dojo that provide a customizable calendar widget that can be used in web applications.
+
+This is a fork of unscriptables copy in order to move this to 1.4.1+
