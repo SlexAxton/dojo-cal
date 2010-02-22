@@ -1,269 +1,148 @@
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
+
+
+if(!dojo._hasResource["dojo._base.lang"]){
+dojo._hasResource["dojo._base.lang"]=true;
 dojo.provide("dojo._base.lang");
-
-// Crockford (ish) functions
-
-dojo.isString = function(/*anything*/ it){
-	//	summary:
-	//		Return true if it is a String
-	return !!arguments.length && it != null && (typeof it == "string" || it instanceof String); // Boolean
-}
-
-dojo.isArray = function(/*anything*/ it){
-	//	summary:
-	//		Return true if it is an Array
-	return it && (it instanceof Array || typeof it == "array"); // Boolean
-}
-
-/*=====
-dojo.isFunction = function(it){
-	// summary: Return true if it is a Function
-	// it: anything
-	return; // Boolean
-}
-=====*/
-
-dojo.isFunction = (function(){
-	var _isFunction = function(/*anything*/ it){
-		return it && (typeof it == "function" || it instanceof Function); // Boolean
-	};
-
-	return dojo.isSafari ?
-		// only slow this down w/ gratuitious casting in Safari since it's what's b0rken
-		function(/*anything*/ it){
-			if(typeof it == "function" && it == "[object NodeList]"){ return false; }
-			return _isFunction(it); // Boolean
-		} : _isFunction;
-})();
-
-dojo.isObject = function(/*anything*/ it){
-	// summary: 
-	//		Returns true if it is a JavaScript object (or an Array, a Function
-	//		or null)
-	return it !== undefined &&
-		(it === null || typeof it == "object" || dojo.isArray(it) || dojo.isFunction(it)); // Boolean
-}
-
-dojo.isArrayLike = function(/*anything*/ it){
-	//	summary:
-	//		similar to dojo.isArray() but more permissive
-	//	description:
-	//		Doesn't strongly test for "arrayness".  Instead, settles for "isn't
-	//		a string or number and has a length property". Arguments objects
-	//		and DOM collections will return true when passed to
-	//		dojo.isArrayLike(), but will return false when passed to
-	//		dojo.isArray().
-	//	returns:
-	//		If it walks like a duck and quicks like a duck, return `true`
-	var d = dojo;
-	return it && it !== undefined && // Boolean
-		// keep out built-in constructors (Number, String, ...) which have length
-		// properties
-		!d.isString(it) && !d.isFunction(it) &&
-		!(it.tagName && it.tagName.toLowerCase() == 'form') &&
-		(d.isArray(it) || isFinite(it.length));
-}
-
-dojo.isAlien = function(/*anything*/ it){
-	// summary: 
-	//		Returns true if it is a built-in function or some other kind of
-	//		oddball that *should* report as a function but doesn't
-	return it && !dojo.isFunction(it) && /\{\s*\[native code\]\s*\}/.test(String(it)); // Boolean
-}
-
-dojo.extend = function(/*Object*/ constructor, /*Object...*/ props){
-	// summary:
-	//		Adds all properties and methods of props to constructor's
-	//		prototype, making them available to all instances created with
-	//		constructor.
-	for(var i=1, l=arguments.length; i<l; i++){
-		dojo._mixin(constructor.prototype, arguments[i]);
-	}
-	return constructor; // Object
-}
-
-dojo._hitchArgs = function(scope, method /*,...*/){
-	var pre = dojo._toArray(arguments, 2);
-	var named = dojo.isString(method);
-	return function(){
-		// arrayify arguments
-		var args = dojo._toArray(arguments);
-		// locate our method
-		var f = named ? (scope||dojo.global)[method] : method;
-		// invoke with collected args
-		return f && f.apply(scope || this, pre.concat(args)); // mixed
- 	} // Function
-}
-
-dojo.hitch = function(/*Object*/scope, /*Function|String*/method /*,...*/){
-	//	summary: 
-	//		Returns a function that will only ever execute in the a given scope. 
-	//		This allows for easy use of object member functions
-	//		in callbacks and other places in which the "this" keyword may
-	//		otherwise not reference the expected scope. 
-	//		Any number of default positional arguments may be passed as parameters 
-	//		beyond "method".
-	//		Each of these values will be used to "placehold" (similar to curry)
-	//		for the hitched function. 
-	//	scope: 
-	//		The scope to use when method executes. If method is a string, 
-	//		scope is also the object containing method.
-	//	method:
-	//		A function to be hitched to scope, or the name of the method in
-	//		scope to be hitched.
-	//	example:
-	//	|	dojo.hitch(foo, "bar")(); 
-	//		runs foo.bar() in the scope of foo
-	//	example:
-	//	|	dojo.hitch(foo, myFunction);
-	//		returns a function that runs myFunction in the scope of foo
-	if(arguments.length > 2){
-		return dojo._hitchArgs.apply(dojo, arguments); // Function
-	}
-	if(!method){
-		method = scope;
-		scope = null;
-	}
-	if(dojo.isString(method)){
-		scope = scope || dojo.global;
-		if(!scope[method]){ throw(['dojo.hitch: scope["', method, '"] is null (scope="', scope, '")'].join('')); }
-		return function(){ return scope[method].apply(scope, arguments || []); }; // Function
-	}
-	return !scope ? method : function(){ return method.apply(scope, arguments || []); }; // Function
-}
-
-/*=====
-dojo.delegate = function(obj, props){
-	//	summary:
-	//		returns a new object which "looks" to obj for properties which it
-	//		does not have a value for. Optionally takes a bag of properties to
-	//		seed the returned object with initially. 
-	//	description:
-	//		This is a small implementaton of the Boodman/Crockford delegation
-	//		pattern in JavaScript. An intermediate object constructor mediates
-	//		the prototype chain for the returned object, using it to delegate
-	//		down to obj for property lookup when object-local lookup fails.
-	//		This can be thought of similarly to ES4's "wrap", save that it does
-	//		not act on types but rather on pure objects.
-	//	obj:
-	//		The object to delegate to for properties not found directly on the
-	//		return object or in props.
-	//	props:
-	//		an object containing properties to assign to the returned object
-	//	returns:
-	//		an Object of anonymous type
-	//	example:
-	//	|	var foo = { bar: "baz" };
-	//	|	var thinger = dojo.delegate(foo, { thud: "xyzzy"});
-	//	|	thinger.bar == "baz"; // delegated to foo
-	//	|	foo.thud == undefined; // by definition
-	//	|	thinger.thud == "xyzzy"; // mixed in from props
-	//	|	foo.bar = "thonk";
-	//	|	thinger.bar == "thonk"; // still delegated to foo's bar
-}
-=====*/
-
-dojo.delegate = dojo._delegate = (function(){
-	// boodman/crockford delegation w/ cornford optimization
-	function TMP(){};
-	return function(obj, props){
-		TMP.prototype = obj;
-		var tmp = new TMP();
-		if(props){
-			dojo._mixin(tmp, props);
-		}
-		return tmp; // Object
-	}
-})();
-
-/*=====
-dojo._toArray = function(obj, offset, startWith){
-	//	summary:
-	//		Converts an array-like object (i.e. arguments, DOMCollection) to an
-	//		array. Returns a new Array with the elements of obj.
-	//	obj: Object
-	//		the object to "arrayify". We expect the object to have, at a
-	//		minimum, a length property which corresponds to integer-indexed
-	//		properties.
-	//	offset: Number?
-	//		the location in obj to start iterating from. Defaults to 0.
-	//		Optional.
-	//	startWith: Array?
-	//		An array to pack with the properties of obj. If provided,
-	//		properties in obj are appended at the end of startWith and
-	//		startWith is the returned array.
-}
-=====*/
-
 (function(){
-	var efficient = function(obj, offset, startWith){
-		return (startWith||[]).concat(Array.prototype.slice.call(obj, offset||0));
-	};
-
-	var slow = function(obj, offset, startWith){
-		var arr = startWith||[]; 
-		for(var x = offset || 0; x < obj.length; x++){ 
-			arr.push(obj[x]); 
-		} 
-		return arr;
-	};
-
-	dojo._toArray = (!dojo.isIE) ? efficient : function(obj){
-		return ((obj.item) ? slow : efficient).apply(this, arguments);
-	};
-
+var d=dojo,_1=Object.prototype.toString;
+dojo.isString=function(it){
+return (typeof it=="string"||it instanceof String);
+};
+dojo.isArray=function(it){
+return it&&(it instanceof Array||typeof it=="array");
+};
+dojo.isFunction=function(it){
+return _1.call(it)==="[object Function]";
+};
+dojo.isObject=function(it){
+return it!==undefined&&(it===null||typeof it=="object"||d.isArray(it)||d.isFunction(it));
+};
+dojo.isArrayLike=function(it){
+return it&&it!==undefined&&!d.isString(it)&&!d.isFunction(it)&&!(it.tagName&&it.tagName.toLowerCase()=="form")&&(d.isArray(it)||isFinite(it.length));
+};
+dojo.isAlien=function(it){
+return it&&!d.isFunction(it)&&/\{\s*\[native code\]\s*\}/.test(String(it));
+};
+dojo.extend=function(_2,_3){
+for(var i=1,l=arguments.length;i<l;i++){
+d._mixin(_2.prototype,arguments[i]);
+}
+return _2;
+};
+dojo._hitchArgs=function(_4,_5){
+var _6=d._toArray(arguments,2);
+var _7=d.isString(_5);
+return function(){
+var _8=d._toArray(arguments);
+var f=_7?(_4||d.global)[_5]:_5;
+return f&&f.apply(_4||this,_6.concat(_8));
+};
+};
+dojo.hitch=function(_9,_a){
+if(arguments.length>2){
+return d._hitchArgs.apply(d,arguments);
+}
+if(!_a){
+_a=_9;
+_9=null;
+}
+if(d.isString(_a)){
+_9=_9||d.global;
+if(!_9[_a]){
+throw (["dojo.hitch: scope[\"",_a,"\"] is null (scope=\"",_9,"\")"].join(""));
+}
+return function(){
+return _9[_a].apply(_9,arguments||[]);
+};
+}
+return !_9?_a:function(){
+return _a.apply(_9,arguments||[]);
+};
+};
+dojo.delegate=dojo._delegate=(function(){
+function _b(){
+};
+return function(_c,_d){
+_b.prototype=_c;
+var _e=new _b();
+_b.prototype=null;
+if(_d){
+d._mixin(_e,_d);
+}
+return _e;
+};
 })();
-
-dojo.partial = function(/*Function|String*/method /*, ...*/){
-	//	summary:
-	//		similar to hitch() except that the scope object is left to be
-	//		whatever the execution context eventually becomes.
-	//	description:
-	//		Calling dojo.partial is the functional equivalent of calling:
-	//		|	dojo.hitch(null, funcName, ...);
-	var arr = [ null ];
-	return dojo.hitch.apply(dojo, arr.concat(dojo._toArray(arguments))); // Function
+var _f=function(obj,_10,_11){
+return (_11||[]).concat(Array.prototype.slice.call(obj,_10||0));
+};
+var _12=function(obj,_13,_14){
+var arr=_14||[];
+for(var x=_13||0;x<obj.length;x++){
+arr.push(obj[x]);
 }
-
-dojo.clone = function(/*anything*/ o){
-	// summary:
-	//		Clones objects (including DOM nodes) and all children.
-	//		Warning: do not clone cyclic structures.
-	if(!o){ return o; }
-	if(dojo.isArray(o)){
-		var r = [];
-		for(var i = 0; i < o.length; ++i){
-			r.push(dojo.clone(o[i]));
-		}
-		return r; // Array
-	}
-	if(!dojo.isObject(o)){
-		return o;	/*anything*/
-	}
-	if(o.nodeType && o.cloneNode){ // isNode
-		return o.cloneNode(true); // Node
-	}
-	if(o instanceof Date){
-		return new Date(o.getTime());	// Date
-	}
-	// Generic objects
-	var r = new o.constructor(); // specific to dojo.declare()'d classes!
-	for(var i in o){
-		if(!(i in r) || r[i] != o[i]){
-			r[i] = dojo.clone(o[i]);
-		}
-	}
-	return r; // Object
+return arr;
+};
+dojo._toArray=d.isIE?function(obj){
+return ((obj.item)?_12:_f).apply(this,arguments);
+}:_f;
+dojo.partial=function(_15){
+var arr=[null];
+return d.hitch.apply(d,arr.concat(d._toArray(arguments)));
+};
+var _16=d._extraNames,_17=_16.length,_18={};
+dojo.clone=function(o){
+if(!o||typeof o!="object"||d.isFunction(o)){
+return o;
 }
-
-dojo.trim = function(/*String*/ str){
-	// summary: 
-	//		trims whitespaces from both sides of the string
-	// description:
-	//		This version of trim() was selected for inclusion into the base due
-	//		to its compact size and relatively good performance (see Steven
-	//		Levithan's blog:
-	//		http://blog.stevenlevithan.com/archives/faster-trim-javascript).
-	//		The fastest but longest version of this function is located at
-	//		dojo.string.trim()
-	return str.replace(/^\s\s*/, '').replace(/\s\s*$/, '');	// String
+if(o.nodeType&&"cloneNode" in o){
+return o.cloneNode(true);
+}
+if(o instanceof Date){
+return new Date(o.getTime());
+}
+var r,i,l,s,_19;
+if(d.isArray(o)){
+r=[];
+for(i=0,l=o.length;i<l;++i){
+if(i in o){
+r.push(d.clone(o[i]));
+}
+}
+}else{
+r=o.constructor?new o.constructor():{};
+}
+for(_19 in o){
+s=o[_19];
+if(!(_19 in r)||(r[_19]!==s&&(!(_19 in _18)||_18[_19]!==s))){
+r[_19]=d.clone(s);
+}
+}
+if(_17){
+for(i=0;i<_17;++i){
+_19=_16[i];
+s=o[_19];
+if(!(_19 in r)||(r[_19]!==s&&(!(_19 in _18)||_18[_19]!==s))){
+r[_19]=s;
+}
+}
+}
+return r;
+};
+dojo.trim=String.prototype.trim?function(str){
+return str.trim();
+}:function(str){
+return str.replace(/^\s\s*/,"").replace(/\s\s*$/,"");
+};
+var _1a=/\{([^\}]+)\}/g;
+dojo.replace=function(_1b,map,_1c){
+return _1b.replace(_1c||_1a,d.isFunction(map)?map:function(_1d,k){
+return d.getObject(k,false,map);
+});
+};
+})();
 }

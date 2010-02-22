@@ -1,267 +1,166 @@
-dojo.provide("dijit._base.popup");
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
 
+
+if(!dojo._hasResource["dijit._base.popup"]){
+dojo._hasResource["dijit._base.popup"]=true;
+dojo.provide("dijit._base.popup");
 dojo.require("dijit._base.focus");
 dojo.require("dijit._base.place");
 dojo.require("dijit._base.window");
-
-dijit.popup = new function(){
-	// summary:
-	//		This class is used to show/hide widgets as popups.
-	//
-
-	var stack = [],
-		beginZIndex=1000,
-		idGen = 1;
-
-	this.prepare = function(/*DomNode*/ node){
-		// summary:
-		//		Prepares a node to be used as a popup
-		//
-		// description:
-		//		Attaches node to dojo.doc.body, and
-		//		positions it off screen, but not display:none, so that
-		//		the widget doesn't appear in the page flow and/or cause a blank
-		//		area at the bottom of the viewport (making scrollbar longer), but
-		//		initialization of contained widgets works correctly
-	
-		dojo.body().appendChild(node);
-		var s = node.style;
-		if(s.display == "none"){
-			s.display="";
-		}
-		s.visibility = "hidden";	// not needed for hiding, but used as flag that node is off-screen
-		s.position = "absolute";
-		s.top = "-9999px";
-	};
-
-	this.open = function(/*Object*/ args){
-		// summary:
-		//		Popup the widget at the specified position
-		//
-		// args: Object
-		//		popup: Widget
-		//			widget to display,
-		//		parent: Widget
-		//			the button etc. that is displaying this popup
-		//		around: DomNode
-		//			DOM node (typically a button); place popup relative to this node
-		//		orient: Object
-		//			structure specifying possible positions of popup relative to "around" node
-		//		onCancel: Function
-		//			callback when user has canceled the popup by
-		//				1. hitting ESC or
-		//				2. by using the popup widget's proprietary cancel mechanism (like a cancel button in a dialog);
-		//				   ie: whenever popupWidget.onCancel() is called, args.onCancel is called
-		//		onClose: Function
-		//			callback whenever this popup is closed
-		//		onExecute: Function
-		//			callback when user "executed" on the popup/sub-popup by selecting a menu choice, etc. (top menu only)
-		//
-		// examples:
-		//		1. opening at the mouse position
-		//			dijit.popup.open({popup: menuWidget, x: evt.pageX, y: evt.pageY});
-		//		2. opening the widget as a dropdown
-		//			dijit.popup.open({parent: this, popup: menuWidget, around: this.domNode, onClose: function(){...}  });
-		//
-		//	Note that whatever widget called dijit.popup.open() should also listen to it's own _onBlur callback
-		//	(fired from _base/focus.js) to know that focus has moved somewhere else and thus the popup should be closed.
-
-		var widget = args.popup,
-			orient = args.orient || {'BL':'TL', 'TL':'BL'},
-			around = args.around,
-			id = (args.around && args.around.id) ? (args.around.id+"_dropdown") : ("popup_"+idGen++);
-
-		// make wrapper div to hold widget and possibly hold iframe behind it.
-		// we can't attach the iframe as a child of the widget.domNode because
-		// widget.domNode might be a <table>, <ul>, etc.
-		var wrapper = dojo.doc.createElement("div");
-		dijit.setWaiRole(wrapper, "presentation");
-		wrapper.id = id;
-		wrapper.className="dijitPopup";
-		wrapper.style.zIndex = beginZIndex + stack.length;
-		wrapper.style.left = wrapper.style.top = "0px";		// prevent transient scrollbar causing misalign (#5776)
-		wrapper.style.visibility = "hidden";
-		if(args.parent){
-			wrapper.dijitPopupParent=args.parent.id;
-		}
-		dojo.body().appendChild(wrapper);
-
-		var s = widget.domNode.style;
-		s.display = "";
-		s.visibility = "";
-		s.position = "";
-		wrapper.appendChild(widget.domNode);
-
-		var iframe = new dijit.BackgroundIframe(wrapper);
-
-		// position the wrapper node
-		var best = around ?
-			dijit.placeOnScreenAroundElement(wrapper, around, orient, widget.orient ? dojo.hitch(widget, "orient") : null) :
-			dijit.placeOnScreen(wrapper, args, orient == 'R' ? ['TR','BR','TL','BL'] : ['TL','BL','TR','BR']);
-
-		wrapper.style.visibility = "visible";
-		// TODO: use effects to fade in wrapper
-
-		var handlers = [];
-
-		// Compute the closest ancestor popup that's *not* a child of another popup.
-		// Ex: For a TooltipDialog with a button that spawns a tree of menus, find the popup of the button.
-		var getTopPopup = function(){
-			for(var pi=stack.length-1; pi > 0 && stack[pi].parent === stack[pi-1].widget; pi--){
-				/* do nothing, just trying to get right value for pi */
-			}
-			return stack[pi];
-		}
-
-		// provide default escape and tab key handling
-		// (this will work for any widget, not just menu)
-		handlers.push(dojo.connect(wrapper, "onkeypress", this, function(evt){
-			if(evt.charOrCode == dojo.keys.ESCAPE && args.onCancel){
-				dojo.stopEvent(evt);
-				args.onCancel();
-			}else if(evt.charOrCode === dojo.keys.TAB){
-				dojo.stopEvent(evt);
-				var topPopup = getTopPopup();
-				if(topPopup && topPopup.onCancel){
-					topPopup.onCancel();
-				}
-			}
-		}));
-
-		// watch for cancel/execute events on the popup and notify the caller
-		// (for a menu, "execute" means clicking an item)
-		if(widget.onCancel){
-			handlers.push(dojo.connect(widget, "onCancel", null, args.onCancel));
-		}
-
-		handlers.push(dojo.connect(widget, widget.onExecute ? "onExecute" : "onChange", null, function(){
-			var topPopup = getTopPopup();
-			if(topPopup && topPopup.onExecute){
-				topPopup.onExecute();
-			}
-		}));
-
-		stack.push({
-			wrapper: wrapper,
-			iframe: iframe,
-			widget: widget,
-			parent: args.parent,
-			onExecute: args.onExecute,
-			onCancel: args.onCancel,
- 			onClose: args.onClose,
-			handlers: handlers
-		});
-
-		if(widget.onOpen){
-			widget.onOpen(best);
-		}
-
-		return best;
-	};
-
-	this.close = function(/*Widget*/ popup){
-		// summary:
-		//		Close specified popup and any popups that it parented
-		while(dojo.some(stack, function(elem){return elem.widget == popup;})){
-			var top = stack.pop(),
-				wrapper = top.wrapper,
-				iframe = top.iframe,
-				widget = top.widget,
-				onClose = top.onClose;
-	
-			if(widget.onClose){
-				widget.onClose();
-			}
-			dojo.forEach(top.handlers, dojo.disconnect);
-	
-			// #2685: check if the widget still has a domNode so ContentPane can change its URL without getting an error
-			if(!widget||!widget.domNode){ return; }
-			
-			this.prepare(widget.domNode);
-
-			iframe.destroy();
-			dojo._destroyElement(wrapper);
-	
-			if(onClose){
-				onClose();
-			}
-		}
-	};
-}();
-
-dijit._frames = new function(){
-	// summary: cache of iframes
-	var queue = [];
-
-	this.pop = function(){
-		var iframe;
-		if(queue.length){
-			iframe = queue.pop();
-			iframe.style.display="";
-		}else{
-			if(dojo.isIE){
-				var burl = dojo.config["dojoBlankHtmlUrl"] || (dojo.moduleUrl("dojo", "resources/blank.html")+"") || "javascript:\"\"";
-				var html="<iframe src='" + burl + "'"
-					+ " style='position: absolute; left: 0px; top: 0px;"
-					+ "z-index: -1; filter:Alpha(Opacity=\"0\");'>";
-				iframe = dojo.doc.createElement(html);
-			}else{
-			 	iframe = dojo.doc.createElement("iframe");
-				iframe.src = 'javascript:""';
-				iframe.className = "dijitBackgroundIframe";
-			}
-			iframe.tabIndex = -1; // Magic to prevent iframe from getting focus on tab keypress - as style didnt work.
-			dojo.body().appendChild(iframe);
-		}
-		return iframe;
-	};
-
-	this.push = function(iframe){
-		iframe.style.display="";
-		if(dojo.isIE){
-			iframe.style.removeExpression("width");
-			iframe.style.removeExpression("height");
-		}
-		queue.push(iframe);
-	}
-}();
-
-// fill the queue
-if(dojo.isIE < 7){
-	dojo.addOnLoad(function(){
-		var f = dijit._frames;
-		dojo.forEach([f.pop()], f.push);
-	});
+dijit.popup=new function(){
+var _1=[],_2=1000,_3=1;
+this.moveOffScreen=function(_4){
+var s=_4.style;
+s.visibility="hidden";
+s.position="absolute";
+s.top="-9999px";
+if(s.display=="none"){
+s.display="";
 }
-
-
-dijit.BackgroundIframe = function(/* DomNode */node){
-	//	summary:
-	//		For IE z-index schenanigans. id attribute is required.
-	//
-	//	description:
-	//		new dijit.BackgroundIframe(node)
-	//			Makes a background iframe as a child of node, that fills
-	//			area (and position) of node
-
-	if(!node.id){ throw new Error("no id"); }
-	if((dojo.isIE && dojo.isIE < 7) || (dojo.isFF && dojo.isFF < 3 && dojo.hasClass(dojo.body(), "dijit_a11y"))){
-		var iframe = dijit._frames.pop();
-		node.appendChild(iframe);
-		if(dojo.isIE){
-			iframe.style.setExpression("width", dojo._scopeName + ".doc.getElementById('" + node.id + "').offsetWidth");
-			iframe.style.setExpression("height", dojo._scopeName + ".doc.getElementById('" + node.id + "').offsetHeight");
-		}
-		this.iframe = iframe;
-	}
+dojo.body().appendChild(_4);
 };
-
-dojo.extend(dijit.BackgroundIframe, {
-	destroy: function(){
-		//	summary: destroy the iframe
-		if(this.iframe){
-			dijit._frames.push(this.iframe);
-			delete this.iframe;
-		}
-	}
+var _5=function(){
+for(var pi=_1.length-1;pi>0&&_1[pi].parent===_1[pi-1].widget;pi--){
+}
+return _1[pi];
+};
+var _6=[];
+this.open=function(_7){
+var _8=_7.popup,_9=_7.orient||(dojo._isBodyLtr()?{"BL":"TL","BR":"TR","TL":"BL","TR":"BR"}:{"BR":"TR","BL":"TL","TR":"BR","TL":"BL"}),_a=_7.around,id=(_7.around&&_7.around.id)?(_7.around.id+"_dropdown"):("popup_"+_3++);
+var _b=_6.pop(),_c,_d;
+if(!_b){
+_c=dojo.create("div",{"class":"dijitPopup"},dojo.body());
+dijit.setWaiRole(_c,"presentation");
+}else{
+_c=_b[0];
+_d=_b[1];
+}
+dojo.attr(_c,{id:id,style:{zIndex:_2+_1.length,visibility:"hidden",top:"-9999px"},dijitPopupParent:_7.parent?_7.parent.id:""});
+var s=_8.domNode.style;
+s.display="";
+s.visibility="";
+s.position="";
+s.top="0px";
+_c.appendChild(_8.domNode);
+if(!_d){
+_d=new dijit.BackgroundIframe(_c);
+}else{
+_d.resize(_c);
+}
+var _e=_a?dijit.placeOnScreenAroundElement(_c,_a,_9,_8.orient?dojo.hitch(_8,"orient"):null):dijit.placeOnScreen(_c,_7,_9=="R"?["TR","BR","TL","BL"]:["TL","BL","TR","BR"],_7.padding);
+_c.style.visibility="visible";
+var _f=[];
+_f.push(dojo.connect(_c,"onkeypress",this,function(evt){
+if(evt.charOrCode==dojo.keys.ESCAPE&&_7.onCancel){
+dojo.stopEvent(evt);
+_7.onCancel();
+}else{
+if(evt.charOrCode===dojo.keys.TAB){
+dojo.stopEvent(evt);
+var _10=_5();
+if(_10&&_10.onCancel){
+_10.onCancel();
+}
+}
+}
+}));
+if(_8.onCancel){
+_f.push(dojo.connect(_8,"onCancel",_7.onCancel));
+}
+_f.push(dojo.connect(_8,_8.onExecute?"onExecute":"onChange",function(){
+var _11=_5();
+if(_11&&_11.onExecute){
+_11.onExecute();
+}
+}));
+_1.push({wrapper:_c,iframe:_d,widget:_8,parent:_7.parent,onExecute:_7.onExecute,onCancel:_7.onCancel,onClose:_7.onClose,handlers:_f});
+if(_8.onOpen){
+_8.onOpen(_e);
+}
+return _e;
+};
+this.close=function(_12){
+while(dojo.some(_1,function(_13){
+return _13.widget==_12;
+})){
+var top=_1.pop(),_14=top.wrapper,_15=top.iframe,_16=top.widget,_17=top.onClose;
+if(_16.onClose){
+_16.onClose();
+}
+dojo.forEach(top.handlers,dojo.disconnect);
+if(_16&&_16.domNode){
+this.moveOffScreen(_16.domNode);
+}
+_14.style.top="-9999px";
+_14.style.visibility="hidden";
+_6.push([_14,_15]);
+if(_17){
+_17();
+}
+}
+};
+}();
+dijit._frames=new function(){
+var _18=[];
+this.pop=function(){
+var _19;
+if(_18.length){
+_19=_18.pop();
+_19.style.display="";
+}else{
+if(dojo.isIE){
+var _1a=dojo.config["dojoBlankHtmlUrl"]||(dojo.moduleUrl("dojo","resources/blank.html")+"")||"javascript:\"\"";
+var _1b="<iframe src='"+_1a+"'"+" style='position: absolute; left: 0px; top: 0px;"+"z-index: -1; filter:Alpha(Opacity=\"0\");'>";
+_19=dojo.doc.createElement(_1b);
+}else{
+_19=dojo.create("iframe");
+_19.src="javascript:\"\"";
+_19.className="dijitBackgroundIframe";
+dojo.style(_19,"opacity",0.1);
+}
+_19.tabIndex=-1;
+}
+return _19;
+};
+this.push=function(_1c){
+_1c.style.display="none";
+_18.push(_1c);
+};
+}();
+dijit.BackgroundIframe=function(_1d){
+if(!_1d.id){
+throw new Error("no id");
+}
+if(dojo.isIE||dojo.isMoz){
+var _1e=dijit._frames.pop();
+_1d.appendChild(_1e);
+if(dojo.isIE<7){
+this.resize(_1d);
+this._conn=dojo.connect(_1d,"onresize",this,function(){
+this.resize(_1d);
 });
+}else{
+dojo.style(_1e,{width:"100%",height:"100%"});
+}
+this.iframe=_1e;
+}
+};
+dojo.extend(dijit.BackgroundIframe,{resize:function(_1f){
+if(this.iframe&&dojo.isIE<7){
+dojo.style(this.iframe,{width:_1f.offsetWidth+"px",height:_1f.offsetHeight+"px"});
+}
+},destroy:function(){
+if(this._conn){
+dojo.disconnect(this._conn);
+this._conn=null;
+}
+if(this.iframe){
+dijit._frames.push(this.iframe);
+delete this.iframe;
+}
+}});
+}

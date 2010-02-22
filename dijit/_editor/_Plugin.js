@@ -1,104 +1,76 @@
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
+
+
+if(!dojo._hasResource["dijit._editor._Plugin"]){
+dojo._hasResource["dijit._editor._Plugin"]=true;
 dojo.provide("dijit._editor._Plugin");
 dojo.require("dijit._Widget");
 dojo.require("dijit.Editor");
 dojo.require("dijit.form.Button");
-
-dojo.declare("dijit._editor._Plugin", null, {
-	// summary
-	//		This represents a "plugin" to the editor, which is basically
-	//		a single button on the Toolbar and some associated code
-	constructor: function(/*Object?*/args, /*DomNode?*/node){
-		if(args){
-			dojo.mixin(this, args);
-		}
-		this._connects=[];
-	},
-
-	editor: null,
-	iconClassPrefix: "dijitEditorIcon",
-	button: null,
-	queryCommand: null,
-	command: "",
-	commandArg: null,
-	useDefaultCommand: true,
-	buttonClass: dijit.form.Button,
-	getLabel: function(key){
-		return this.editor.commands[key];
-	},
-	_initButton: function(props){
-		if(this.command.length){
-			var label = this.getLabel(this.command);
-			var className = this.iconClassPrefix+" "+this.iconClassPrefix + this.command.charAt(0).toUpperCase() + this.command.substr(1);
-			if(!this.button){
-				props = dojo.mixin({
-					label: label,
-					showLabel: false,
-					iconClass: className,
-					dropDown: this.dropDown,
-					tabIndex: "-1"
-				}, props || {});
-				this.button = new this.buttonClass(props);
-			}
-		}
-	},
-	destroy: function(f){
-		dojo.forEach(this._connects, dojo.disconnect);
-	},
-	connect: function(o, f, tf){
-		this._connects.push(dojo.connect(o, f, this, tf));
-	},
-	updateState: function(){
-		var _e = this.editor;
-		var _c = this.command;
-		if(!_e){ return; }
-		if(!_e.isLoaded){ return; }
-		if(!_c.length){ return; }
-		if(this.button){
-			try{
-				var enabled = _e.queryCommandEnabled(_c);
-				if(this.enabled!==enabled){
-					this.enabled=enabled;
-					this.button.attr('disabled', !enabled);
-				}
-				if(typeof this.button.checked == 'boolean'){
-					var checked=_e.queryCommandState(_c);
-					if(this.checked!==checked){
-						this.checked=checked;
-						this.button.attr('checked', _e.queryCommandState(_c));
-					}
-				}
-			}catch(e){
-				console.debug(e);
-			}
-		}
-	},
-	setEditor: function(/*Widget*/editor){
-		// FIXME: detatch from previous editor!!
-		this.editor = editor;
-
-		// FIXME: prevent creating this if we don't need to (i.e., editor can't handle our command)
-		this._initButton();
-
-		// FIXME: wire up editor to button here!
-		if(this.command.length &&
-			!this.editor.queryCommandAvailable(this.command)
-		){
-			// console.debug("hiding:", this.command);
-			if(this.button){
-				this.button.domNode.style.display = "none";
-			}
-		}
-		if(this.button && this.useDefaultCommand){
-			this.connect(this.button, "onClick",
-				dojo.hitch(this.editor, "execCommand", this.command, this.commandArg)
-			);
-		}
-		this.connect(this.editor, "onNormalizedDisplayChanged", "updateState");
-	},
-	setToolbar: function(/*Widget*/toolbar){
-		if(this.button){
-			toolbar.addChild(this.button);
-		}
-		// console.debug("adding", this.button, "to:", toolbar);
-	}
-});
+dojo.declare("dijit._editor._Plugin",null,{constructor:function(_1,_2){
+this.params=_1||{};
+dojo.mixin(this,this.params);
+this._connects=[];
+},editor:null,iconClassPrefix:"dijitEditorIcon",button:null,command:"",useDefaultCommand:true,buttonClass:dijit.form.Button,getLabel:function(_3){
+return this.editor.commands[_3];
+},_initButton:function(){
+if(this.command.length){
+var _4=this.getLabel(this.command);
+var _5=this.iconClassPrefix+" "+this.iconClassPrefix+this.command.charAt(0).toUpperCase()+this.command.substr(1);
+if(!this.button){
+var _6=dojo.mixin({label:_4,showLabel:false,iconClass:_5,dropDown:this.dropDown,tabIndex:"-1"},this.params||{});
+this.button=new this.buttonClass(_6);
+}
+}
+},destroy:function(){
+dojo.forEach(this._connects,dojo.disconnect);
+if(this.dropDown){
+this.dropDown.destroyRecursive();
+}
+},connect:function(o,f,tf){
+this._connects.push(dojo.connect(o,f,this,tf));
+},updateState:function(){
+var e=this.editor,c=this.command,_7,_8;
+if(!e||!e.isLoaded||!c.length){
+return;
+}
+if(this.button){
+try{
+_8=e.queryCommandEnabled(c);
+if(this.enabled!==_8){
+this.enabled=_8;
+this.button.attr("disabled",!_8);
+}
+if(typeof this.button.checked=="boolean"){
+_7=e.queryCommandState(c);
+if(this.checked!==_7){
+this.checked=_7;
+this.button.attr("checked",e.queryCommandState(c));
+}
+}
+}
+catch(e){
+}
+}
+},setEditor:function(_9){
+this.editor=_9;
+this._initButton();
+if(this.command.length&&!this.editor.queryCommandAvailable(this.command)){
+if(this.button){
+this.button.domNode.style.display="none";
+}
+}
+if(this.button&&this.useDefaultCommand){
+this.connect(this.button,"onClick",dojo.hitch(this.editor,"execCommand",this.command,this.commandArg));
+}
+this.connect(this.editor,"onNormalizedDisplayChanged","updateState");
+},setToolbar:function(_a){
+if(this.button){
+_a.addChild(this.button);
+}
+}});
+}

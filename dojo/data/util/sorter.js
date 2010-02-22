@@ -1,77 +1,66 @@
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
+
+
+if(!dojo._hasResource["dojo.data.util.sorter"]){
+dojo._hasResource["dojo.data.util.sorter"]=true;
 dojo.provide("dojo.data.util.sorter");
-
-dojo.data.util.sorter.basicComparator = function(	/*anything*/ a, 
-													/*anything*/ b){
-	//	summary:  
-	//		Basic comparision function that compares if an item is greater or less than another item
-	//	description:  
-	//		returns 1 if a > b, -1 if a < b, 0 if equal.
-	//		undefined values are treated as larger values so that they're pushed to the end of the list.
-
-	var ret = 0;
-	if(a > b || typeof a === "undefined" || a === null){
-		ret = 1;
-	}else if(a < b || typeof b === "undefined" || b === null){
-		ret = -1;
-	}
-	return ret; //int, {-1,0,1}
+dojo.data.util.sorter.basicComparator=function(a,b){
+var r=-1;
+if(a===null){
+a=undefined;
+}
+if(b===null){
+b=undefined;
+}
+if(a==b){
+r=0;
+}else{
+if(a>b||a==null){
+r=1;
+}
+}
+return r;
 };
-
-dojo.data.util.sorter.createSortFunction = function(	/* attributes array */sortSpec,
-														/*dojo.data.core.Read*/ store){
-	//	summary:  
-	//		Helper function to generate the sorting function based off the list of sort attributes.
-	//	description:  
-	//		The sort function creation will look for a property on the store called 'comparatorMap'.  If it exists
-	//		it will look in the mapping for comparisons function for the attributes.  If one is found, it will
-	//		use it instead of the basic comparator, which is typically used for strings, ints, booleans, and dates.
-	//		Returns the sorting function for this particular list of attributes and sorting directions.
-	//
-	//	sortSpec: array
-	//		A JS object that array that defines out what attribute names to sort on and whether it should be descenting or asending.
-	//		The objects should be formatted as follows:
-	//		{
-	//			attribute: "attributeName-string" || attribute,
-	//			descending: true|false;   // Default is false.
-	//		}
-	//	store: object
-	//		The datastore object to look up item values from.
-	//
-	var sortFunctions=[];   
-
-	function createSortFunction(attr, dir){
-		return function(itemA, itemB){
-			var a = store.getValue(itemA, attr);
-			var b = store.getValue(itemB, attr);
-			//See if we have a override for an attribute comparison.
-			var comparator = null;
-			if(store.comparatorMap){
-				if(typeof attr !== "string"){
-					 attr = store.getIdentity(attr);
-				}
-				comparator = store.comparatorMap[attr]||dojo.data.util.sorter.basicComparator;
-			}
-			comparator = comparator||dojo.data.util.sorter.basicComparator; 
-			return dir * comparator(a,b); //int
-		};
-	}
-	var sortAttribute;
-	for(var i = 0; i < sortSpec.length; i++){
-		sortAttribute = sortSpec[i];
-		if(sortAttribute.attribute){
-			var direction = (sortAttribute.descending) ? -1 : 1;
-			sortFunctions.push(createSortFunction(sortAttribute.attribute, direction));
-		}
-	}
-
-	return function(rowA, rowB){
-		var i=0;
-		while(i < sortFunctions.length){
-			var ret = sortFunctions[i++](rowA, rowB);
-			if(ret !== 0){
-				return ret;//int
-			}
-		}
-		return 0; //int  
-	};  //  Function
+dojo.data.util.sorter.createSortFunction=function(_1,_2){
+var _3=[];
+function _4(_5,_6,_7,s){
+return function(_8,_9){
+var a=s.getValue(_8,_5);
+var b=s.getValue(_9,_5);
+return _6*_7(a,b);
 };
+};
+var _a;
+var _b=_2.comparatorMap;
+var bc=dojo.data.util.sorter.basicComparator;
+for(var i=0;i<_1.length;i++){
+_a=_1[i];
+var _c=_a.attribute;
+if(_c){
+var _d=(_a.descending)?-1:1;
+var _e=bc;
+if(_b){
+if(typeof _c!=="string"&&("toString" in _c)){
+_c=_c.toString();
+}
+_e=_b[_c]||bc;
+}
+_3.push(_4(_c,_d,_e,_2));
+}
+}
+return function(_f,_10){
+var i=0;
+while(i<_3.length){
+var ret=_3[i++](_f,_10);
+if(ret!==0){
+return ret;
+}
+}
+return 0;
+};
+};
+}

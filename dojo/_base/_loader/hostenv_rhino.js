@@ -1,246 +1,153 @@
 /*
-* Rhino host environment
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
 */
 
+
 if(dojo.config["baseUrl"]){
-	dojo.baseUrl = dojo.config["baseUrl"];
+dojo.baseUrl=dojo.config["baseUrl"];
 }else{
-	dojo.baseUrl = "./";
+dojo.baseUrl="./";
 }
-
-dojo.locale = dojo.locale || String(java.util.Locale.getDefault().toString().replace('_','-').toLowerCase());
-dojo._name = 'rhino';
-dojo.isRhino = true;
-
-if(typeof print == "function"){
-	console.debug = print;
+dojo.locale=dojo.locale||String(java.util.Locale.getDefault().toString().replace("_","-").toLowerCase());
+dojo._name="rhino";
+dojo.isRhino=true;
+if(typeof print=="function"){
+console.debug=print;
 }
-
-if(typeof dojo["byId"] == "undefined"){
-	dojo.byId = function(id, doc){
-		if(id && (typeof id == "string" || id instanceof String)){
-			if(!doc){ doc = document; }
-			return doc.getElementById(id);
-		}
-		return id; // assume it's a node
-	}
+if(!("byId" in dojo)){
+dojo.byId=function(id,_1){
+if(id&&(typeof id=="string"||id instanceof String)){
+if(!_1){
+_1=document;
 }
-
-// see comments in spidermonkey loadUri
-dojo._loadUri = function(uri, cb){
-	try{
-		var local = (new java.io.File(uri)).exists();
-		if(!local){
-			try{
-				// try it as a file first, URL second
-				var stream = (new java.net.URL(uri)).openStream();
-				// close the stream so we don't leak resources
-				stream.close();
-			}catch(e){
-				// no debug output; this failure just means the uri was not found.
-				return false;
-			}
-		}
-		//FIXME: Use Rhino 1.6 native readFile/readUrl if available?
-		if(cb){
-			var contents = (local ? readText : readUri)(uri, "UTF-8");
-			cb(eval('('+contents+')'));
-		}else{
-			load(uri);
-		}
-		return true;
-	}catch(e){
-		console.debug("rhino load('" + uri + "') failed. Exception: " + e);
-		return false;
-	}
+return _1.getElementById(id);
 }
-
-dojo.exit = function(exitcode){ 
-	quit(exitcode);
+return id;
+};
 }
-
-// Hack to determine current script...
-//
-// These initial attempts failed:
-//   1. get an EcmaError and look at e.getSourceName(): try {eval ("static in return")} catch(e) { ...
-//   Won't work because NativeGlobal.java only does a put of "name" and "message", not a wrapped reflecting object.
-//   Even if the EcmaError object had the sourceName set.
-//  
-//   2. var e = Packages.org.mozilla.javascript.Context.getCurrentContext().reportError('');
-//   Won't work because it goes directly to the errorReporter, not the return value.
-//   We want context.interpreterSourceFile and context.interpreterLine, which are used in static Context.getSourcePositionFromStack
-//   (set by Interpreter.java at interpretation time, if in interpreter mode).
-//
-//   3. var e = Packages.org.mozilla.javascript.Context.getCurrentContext().reportRuntimeError('');
-//   This returns an object, but e.message still does not have source info.
-//   In compiler mode, perhaps not set; in interpreter mode, perhaps not used by errorReporter?
-//
-// What we found works is to do basically the same hack as is done in getSourcePositionFromStack,
-// making a new java.lang.Exception() and then calling printStackTrace on a string stream.
-// We have to parse the string for the .js files (different from the java files).
-// This only works however in compiled mode (-opt 0 or higher).
-// In interpreter mode, entire stack is java.
-// When compiled, printStackTrace is like:
-// java.lang.Exception
-//	at sun.reflect.NativeConstructorAccessorImpl.newInstance0(Native Method)
-//	at sun.reflect.NativeConstructorAccessorImpl.newInstance(NativeConstructorAccessorImpl.java:39)
-//	at sun.reflect.DelegatingConstructorAccessorImpl.newInstance(DelegatingConstructorAccessorImpl.java:27)
-//	at java.lang.reflect.Constructor.newInstance(Constructor.java:274)
-//	at org.mozilla.javascript.NativeJavaClass.constructSpecific(NativeJavaClass.java:228)
-//	at org.mozilla.javascript.NativeJavaClass.construct(NativeJavaClass.java:185)
-//	at org.mozilla.javascript.ScriptRuntime.newObject(ScriptRuntime.java:1269)
-//	at org.mozilla.javascript.gen.c2.call(/Users/mda/Sites/burstproject/testrhino.js:27)
-//    ...
-//	at org.mozilla.javascript.tools.shell.Main.main(Main.java:76)
-//
-// Note may get different answers based on:
-//    Context.setOptimizationLevel(-1)
-//    Context.setGeneratingDebug(true)
-//    Context.setGeneratingSource(true) 
-//
-// Some somewhat helpful posts:
-//    http://groups.google.com/groups?hl=en&lr=&ie=UTF-8&oe=UTF-8&safe=off&selm=9v9n0g%246gr1%40ripley.netscape.com
-//    http://groups.google.com/groups?hl=en&lr=&ie=UTF-8&oe=UTF-8&safe=off&selm=3BAA2DC4.6010702%40atg.com
-//
-// Note that Rhino1.5R5 added source name information in some exceptions.
-// But this seems not to help in command-line Rhino, because Context.java has an error reporter
-// so no EvaluationException is thrown.
-
-// do it by using java java.lang.Exception
-dojo._rhinoCurrentScriptViaJava = function(depth){
-	var optLevel = Packages.org.mozilla.javascript.Context.getCurrentContext().getOptimizationLevel();  
-	var caw = new java.io.CharArrayWriter();
-	var pw = new java.io.PrintWriter(caw);
-	var exc = new java.lang.Exception();
-	var s = caw.toString();
-	// we have to exclude the ones with or without line numbers because they put double entries in:
-	//   at org.mozilla.javascript.gen.c3._c4(/Users/mda/Sites/burstproject/burst/Runtime.js:56)
-	//   at org.mozilla.javascript.gen.c3.call(/Users/mda/Sites/burstproject/burst/Runtime.js)
-	var matches = s.match(/[^\(]*\.js\)/gi);
-	if(!matches){
-		throw Error("cannot parse printStackTrace output: " + s);
-	}
-
-	// matches[0] is entire string, matches[1] is this function, matches[2] is caller, ...
-	var fname = ((typeof depth != 'undefined')&&(depth)) ? matches[depth + 1] : matches[matches.length - 1];
-	fname = matches[3];
-	if(!fname){ fname = matches[1]; }
-	// print("got fname '" + fname + "' from stack string '" + s + "'");
-	if (!fname){ throw Error("could not find js file in printStackTrace output: " + s); }
-	//print("Rhino getCurrentScriptURI returning '" + fname + "' from: " + s); 
-	return fname;
-}
-
-// reading a file from disk in Java is a humiliating experience by any measure.
-// Lets avoid that and just get the freaking text
-function readText(path, encoding){
-	encoding = encoding || "utf-8";
-	// NOTE: we intentionally avoid handling exceptions, since the caller will
-	// want to know
-	var jf = new java.io.File(path);
-	var is = new java.io.FileInputStream(jf);
-	return dj_readInputStream(is, encoding);
-}
-
-function readUri(uri, encoding){
-	var conn = (new java.net.URL(uri)).openConnection();
-	encoding = encoding || conn.getContentEncoding() || "utf-8";
-	var is = conn.getInputStream();
-	return dj_readInputStream(is, encoding);
-}
-
-function dj_readInputStream(is, encoding){
-	var input = new java.io.BufferedReader(new java.io.InputStreamReader(is, encoding));
-	try {
-		var sb = new java.lang.StringBuffer();
-		var line = "";
-		while((line = input.readLine()) !== null){
-			sb.append(line);
-			sb.append(java.lang.System.getProperty("line.separator"));
-		}
-		return sb.toString();
-	} finally {
-		input.close();
-	}
-}
-
-// call this now because later we may not be on the top of the stack
-if(
-	(!dojo.config.libraryScriptUri)||
-	(!dojo.config.libraryScriptUri.length)
-){
-	try{
-		dojo.config.libraryScriptUri = dojo._rhinoCurrentScriptViaJava(1);
-	}catch(e){
-		// otherwise just fake it
-		if(dojo.config["isDebug"]){
-			print("\n");
-			print("we have no idea where Dojo is located.");
-			print("Please try loading rhino in a non-interpreted mode or set a");
-			print("\n\tdjConfig.libraryScriptUri\n");
-			print("Setting the dojo path to './'");
-			print("This is probably wrong!");
-			print("\n");
-			print("Dojo will try to load anyway");
-		}
-		dojo.config.libraryScriptUri = "./";
-	}
-}
-
-// summary:
-//		return the document object associated with the dojo.global
-dojo.doc = typeof(document) != "undefined" ? document : null;
-
-dojo.body = function(){
-	return document.body;	
-}
-
-// Supply setTimeout/clearTimeout implementations if they aren't already there
-// Note: this assumes that we define both if one is not provided... there might
-// be a better way to do this if there is a use case where one is defined but
-// not the other
+dojo._isLocalUrl=function(_2){
+var _3=(new java.io.File(_2)).exists();
+if(!_3){
+var _4;
 try{
-	setTimeout;
-	clearTimeout;
-}catch(e){
-	dojo._timeouts = [];
-	function clearTimeout(idx){
-		if(!dojo._timeouts[idx]){ return; }
-		dojo._timeouts[idx].stop();
-	}
-
-	function setTimeout(func, delay){
-		// summary: provides timed callbacks using Java threads
-
-		var def={
-			sleepTime:delay,
-			hasSlept:false,
-		
-			run:function(){
-				if(!this.hasSlept){
-					this.hasSlept=true;
-					java.lang.Thread.currentThread().sleep(this.sleepTime);
-				}
-				try{
-					func();
-				}catch(e){
-					console.debug("Error running setTimeout thread:" + e);
-				}
-			}
-		};
-	
-		var runnable = new java.lang.Runnable(def);
-		var thread = new java.lang.Thread(runnable);
-		thread.start();
-		return dojo._timeouts.push(thread)-1;
-	}
+_4=(new java.net.URL(_2)).openStream();
+_4.close();
 }
-
-//Register any module paths set up in djConfig. Need to do this
-//in the hostenvs since hostenv_browser can read djConfig from a
-//script tag's attribute.
+finally{
+if(_4&&_4.close){
+_4.close();
+}
+}
+}
+return _3;
+};
+dojo._loadUri=function(_5,cb){
+try{
+var _6;
+try{
+_6=dojo._isLocalUrl(_5);
+}
+catch(e){
+return false;
+}
+if(cb){
+var _7=(_6?readText:readUri)(_5,"UTF-8");
+if(!eval("'‏'").length){
+_7=String(_7).replace(/[\u200E\u200F\u202A-\u202E]/g,function(_8){
+return "\\u"+_8.charCodeAt(0).toString(16);
+});
+}
+cb(eval("("+_7+")"));
+}else{
+load(_5);
+}
+return true;
+}
+catch(e){
+return false;
+}
+};
+dojo.exit=function(_9){
+quit(_9);
+};
+function readText(_a,_b){
+_b=_b||"utf-8";
+var jf=new java.io.File(_a);
+var is=new java.io.FileInputStream(jf);
+return dj_readInputStream(is,_b);
+};
+function readUri(_c,_d){
+var _e=(new java.net.URL(_c)).openConnection();
+_d=_d||_e.getContentEncoding()||"utf-8";
+var is=_e.getInputStream();
+return dj_readInputStream(is,_d);
+};
+function dj_readInputStream(is,_f){
+var _10=new java.io.BufferedReader(new java.io.InputStreamReader(is,_f));
+try{
+var sb=new java.lang.StringBuffer();
+var _11="";
+while((_11=_10.readLine())!==null){
+sb.append(_11);
+sb.append(java.lang.System.getProperty("line.separator"));
+}
+return sb.toString();
+}
+finally{
+_10.close();
+}
+};
+dojo._getText=function(uri,_12){
+try{
+var _13=dojo._isLocalUrl(uri);
+var _14=(_13?readText:readUri)(uri,"UTF-8");
+if(_14!==null){
+_14+="";
+}
+return _14;
+}
+catch(e){
+if(_12){
+return null;
+}else{
+throw e;
+}
+}
+};
+dojo.doc=typeof document!="undefined"?document:null;
+dojo.body=function(){
+return document.body;
+};
+if(typeof setTimeout=="undefined"||typeof clearTimeout=="undefined"){
+dojo._timeouts=[];
+clearTimeout=function(idx){
+if(!dojo._timeouts[idx]){
+return;
+}
+dojo._timeouts[idx].stop();
+};
+setTimeout=function(_15,_16){
+var def={sleepTime:_16,hasSlept:false,run:function(){
+if(!this.hasSlept){
+this.hasSlept=true;
+java.lang.Thread.currentThread().sleep(this.sleepTime);
+}
+try{
+_15();
+}
+catch(e){
+}
+}};
+var _17=new java.lang.Runnable(def);
+var _18=new java.lang.Thread(_17);
+_18.start();
+return dojo._timeouts.push(_18)-1;
+};
+}
 if(dojo.config["modulePaths"]){
-	for(var param in dojo.config["modulePaths"]){
-		dojo.registerModulePath(param, dojo.config["modulePaths"][param]);
-	}
+for(var param in dojo.config["modulePaths"]){
+dojo.registerModulePath(param,dojo.config["modulePaths"][param]);
+}
 }

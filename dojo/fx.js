@@ -1,416 +1,252 @@
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
+
+
+if(!dojo._hasResource["dojo.fx"]){
+dojo._hasResource["dojo.fx"]=true;
 dojo.provide("dojo.fx");
-dojo.provide("dojo.fx.Toggler");
-
-/*=====
-dojo.fx = {
-	// summary: Effects library on top of Base animations
-};
-=====*/
-
+dojo.require("dojo.fx.Toggler");
 (function(){
-	var _baseObj = {
-			_fire: function(evt, args){
-				if(this[evt]){
-					this[evt].apply(this, args||[]);
-				}
-				return this;
-			}
-		};
-
-	var _chain = function(animations){
-		this._index = -1;
-		this._animations = animations||[];
-		this._current = this._onAnimateCtx = this._onEndCtx = null;
-
-		this.duration = 0;
-		dojo.forEach(this._animations, function(a){
-			this.duration += a.duration;
-			if(a.delay){ this.duration += a.delay; }
-		}, this);
-	};
-	dojo.extend(_chain, {
-		_onAnimate: function(){
-			this._fire("onAnimate", arguments);
-		},
-		_onEnd: function(){
-			dojo.disconnect(this._onAnimateCtx);
-			dojo.disconnect(this._onEndCtx);
-			this._onAnimateCtx = this._onEndCtx = null;
-			if(this._index + 1 == this._animations.length){
-				this._fire("onEnd");
-			}else{
-				// switch animations
-				this._current = this._animations[++this._index];
-				this._onAnimateCtx = dojo.connect(this._current, "onAnimate", this, "_onAnimate");
-				this._onEndCtx = dojo.connect(this._current, "onEnd", this, "_onEnd");
-				this._current.play(0, true);
-			}
-		},
-		play: function(/*int?*/ delay, /*Boolean?*/ gotoStart){
-			if(!this._current){ this._current = this._animations[this._index = 0]; }
-			if(!gotoStart && this._current.status() == "playing"){ return this; }
-			var beforeBegin = dojo.connect(this._current, "beforeBegin", this, function(){
-					this._fire("beforeBegin");
-				}),
-				onBegin = dojo.connect(this._current, "onBegin", this, function(arg){
-					this._fire("onBegin", arguments);
-				}),
-				onPlay = dojo.connect(this._current, "onPlay", this, function(arg){
-					this._fire("onPlay", arguments);
-					dojo.disconnect(beforeBegin);
-					dojo.disconnect(onBegin);
-					dojo.disconnect(onPlay);
-				});
-			if(this._onAnimateCtx){
-				dojo.disconnect(this._onAnimateCtx);
-			}
-			this._onAnimateCtx = dojo.connect(this._current, "onAnimate", this, "_onAnimate");
-			if(this._onEndCtx){
-				dojo.disconnect(this._onEndCtx);
-			}
-			this._onEndCtx = dojo.connect(this._current, "onEnd", this, "_onEnd");
-			this._current.play.apply(this._current, arguments);
-			return this;
-		},
-		pause: function(){
-			if(this._current){
-				var e = dojo.connect(this._current, "onPause", this, function(arg){
-						this._fire("onPause", arguments);
-						dojo.disconnect(e);
-					});
-				this._current.pause();
-			}
-			return this;
-		},
-		gotoPercent: function(/*Decimal*/percent, /*Boolean?*/ andPlay){
-			this.pause();
-			var offset = this.duration * percent;
-			this._current = null;
-			dojo.some(this._animations, function(a){
-				if(a.duration <= offset){
-					this._current = a;
-					return true;
-				}
-				offset -= a.duration;
-				return false;
-			});
-			if(this._current){
-				this._current.gotoPercent(offset / this._current.duration, andPlay);
-			}
-			return this;
-		},
-		stop: function(/*boolean?*/ gotoEnd){
-			if(this._current){
-				if(gotoEnd){
-					for(; this._index + 1 < this._animations.length; ++this._index){
-						this._animations[this._index].stop(true);
-					}
-					this._current = this._animations[this._index];
-				}
-				var e = dojo.connect(this._current, "onStop", this, function(arg){
-						this._fire("onStop", arguments);
-						dojo.disconnect(e);
-					});
-				this._current.stop();
-			}
-			return this;
-		},
-		status: function(){
-			return this._current ? this._current.status() : "stopped";
-		},
-		destroy: function(){
-			if(this._onAnimateCtx){ dojo.disconnect(this._onAnimateCtx); }
-			if(this._onEndCtx){ dojo.disconnect(this._onEndCtx); }
-		}
-	});
-	dojo.extend(_chain, _baseObj);
-
-	dojo.fx.chain = function(/*dojo._Animation[]*/ animations){
-		// summary: Chain a list of dojo._Animation s to run in sequence
-		// example:
-		//	|	dojo.fx.chain([
-		//	|		dojo.fadeIn({ node:node }),
-		//	|		dojo.fadeOut({ node:otherNode })
-		//	|	]).play();
-		//
-		return new _chain(animations) // dojo._Animation
-	};
-
-	var _combine = function(animations){
-		this._animations = animations||[];
-		this._connects = [];
-		this._finished = 0;
-
-		this.duration = 0;
-		dojo.forEach(animations, function(a){
-			var duration = a.duration;
-			if(a.delay){ duration += a.delay; }
-			if(this.duration < duration){ this.duration = duration; }
-			this._connects.push(dojo.connect(a, "onEnd", this, "_onEnd"));
-		}, this);
-		
-		this._pseudoAnimation = new dojo._Animation({curve: [0, 1], duration: this.duration});
-		dojo.forEach(["beforeBegin", "onBegin", "onPlay", "onAnimate", "onPause", "onStop"], 
-			function(evt){
-				this._connects.push(dojo.connect(this._pseudoAnimation, evt, dojo.hitch(this, "_fire", evt)));
-			},
-			this
-		);
-	};
-	dojo.extend(_combine, {
-		_doAction: function(action, args){
-			dojo.forEach(this._animations, function(a){
-				a[action].apply(a, args);
-			});
-			return this;
-		},
-		_onEnd: function(){
-			if(++this._finished == this._animations.length){
-				this._fire("onEnd");
-			}
-		},
-		_call: function(action, args){
-			var t = this._pseudoAnimation;
-			t[action].apply(t, args);
-		},
-		play: function(/*int?*/ delay, /*Boolean?*/ gotoStart){
-			this._finished = 0;
-			this._doAction("play", arguments);
-			this._call("play", arguments);
-			return this;
-		},
-		pause: function(){
-			this._doAction("pause", arguments);
-			this._call("pause", arguments);
-			return this;
-		},
-		gotoPercent: function(/*Decimal*/percent, /*Boolean?*/ andPlay){
-			var ms = this.duration * percent;
-			dojo.forEach(this._animations, function(a){
-				a.gotoPercent(a.duration < ms ? 1 : (ms / a.duration), andPlay);
-			});
-			this._call("gotoPercent", arguments);
-			return this;
-		},
-		stop: function(/*boolean?*/ gotoEnd){
-			this._doAction("stop", arguments);
-			this._call("stop", arguments);
-			return this;
-		},
-		status: function(){
-			return this._pseudoAnimation.status();
-		},
-		destroy: function(){
-			dojo.forEach(this._connects, dojo.disconnect);
-		}
-	});
-	dojo.extend(_combine, _baseObj);
-
-	dojo.fx.combine = function(/*dojo._Animation[]*/ animations){
-		// summary: Combine a list of dojo._Animation s to run in parallel
-		// example:
-		//	|	dojo.fx.combine([
-		//	|		dojo.fadeIn({ node:node }),
-		//	|		dojo.fadeOut({ node:otherNode })
-		//	|	]).play();
-		return new _combine(animations); // dojo._Animation
-	};
-})();
-
-dojo.declare("dojo.fx.Toggler", null, {
-	// summary:
-	//		class constructor for an animation toggler. It accepts a packed
-	//		set of arguments about what type of animation to use in each
-	//		direction, duration, etc.
-	//
-	// example:
-	//	|	var t = new dojo.fx.Toggler({
-	//	|		node: "nodeId",
-	//	|		showDuration: 500,
-	//	|		// hideDuration will default to "200"
-	//	|		showFunc: dojo.wipeIn, 
-	//	|		// hideFunc will default to "fadeOut"
-	//	|	});
-	//	|	t.show(100); // delay showing for 100ms
-	//	|	// ...time passes...
-	//	|	t.hide();
-
-	// FIXME: need a policy for where the toggler should "be" the next
-	// time show/hide are called if we're stopped somewhere in the
-	// middle.
-
-	constructor: function(args){
-		var _t = this;
-
-		dojo.mixin(_t, args);
-		_t.node = args.node;
-		_t._showArgs = dojo.mixin({}, args);
-		_t._showArgs.node = _t.node;
-		_t._showArgs.duration = _t.showDuration;
-		_t.showAnim = _t.showFunc(_t._showArgs);
-
-		_t._hideArgs = dojo.mixin({}, args);
-		_t._hideArgs.node = _t.node;
-		_t._hideArgs.duration = _t.hideDuration;
-		_t.hideAnim = _t.hideFunc(_t._hideArgs);
-
-		dojo.connect(_t.showAnim, "beforeBegin", dojo.hitch(_t.hideAnim, "stop", true));
-		dojo.connect(_t.hideAnim, "beforeBegin", dojo.hitch(_t.showAnim, "stop", true));
-	},
-
-	// node: DomNode
-	//	the node to toggle
-	node: null,
-
-	// showFunc: Function
-	//	The function that returns the dojo._Animation to show the node
-	showFunc: dojo.fadeIn,
-
-	// hideFunc: Function	
-	//	The function that returns the dojo._Animation to hide the node
-	hideFunc: dojo.fadeOut,
-
-	// showDuration:
-	//	Time in milliseconds to run the show Animation
-	showDuration: 200,
-
-	// hideDuration:
-	//	Time in milliseconds to run the hide Animation
-	hideDuration: 200,
-
-	/*=====
-	_showArgs: null,
-	_showAnim: null,
-
-	_hideArgs: null,
-	_hideAnim: null,
-
-	_isShowing: false,
-	_isHiding: false,
-	=====*/
-
-	show: function(delay){
-		// summary: Toggle the node to showing
-		return this.showAnim.play(delay || 0);
-	},
-
-	hide: function(delay){
-		// summary: Toggle the node to hidden
-		return this.hideAnim.play(delay || 0);
-	}
+var d=dojo,_1={_fire:function(_2,_3){
+if(this[_2]){
+this[_2].apply(this,_3||[]);
+}
+return this;
+}};
+var _4=function(_5){
+this._index=-1;
+this._animations=_5||[];
+this._current=this._onAnimateCtx=this._onEndCtx=null;
+this.duration=0;
+d.forEach(this._animations,function(a){
+this.duration+=a.duration;
+if(a.delay){
+this.duration+=a.delay;
+}
+},this);
+};
+d.extend(_4,{_onAnimate:function(){
+this._fire("onAnimate",arguments);
+},_onEnd:function(){
+d.disconnect(this._onAnimateCtx);
+d.disconnect(this._onEndCtx);
+this._onAnimateCtx=this._onEndCtx=null;
+if(this._index+1==this._animations.length){
+this._fire("onEnd");
+}else{
+this._current=this._animations[++this._index];
+this._onAnimateCtx=d.connect(this._current,"onAnimate",this,"_onAnimate");
+this._onEndCtx=d.connect(this._current,"onEnd",this,"_onEnd");
+this._current.play(0,true);
+}
+},play:function(_6,_7){
+if(!this._current){
+this._current=this._animations[this._index=0];
+}
+if(!_7&&this._current.status()=="playing"){
+return this;
+}
+var _8=d.connect(this._current,"beforeBegin",this,function(){
+this._fire("beforeBegin");
+}),_9=d.connect(this._current,"onBegin",this,function(_a){
+this._fire("onBegin",arguments);
+}),_b=d.connect(this._current,"onPlay",this,function(_c){
+this._fire("onPlay",arguments);
+d.disconnect(_8);
+d.disconnect(_9);
+d.disconnect(_b);
 });
-
-dojo.fx.wipeIn = function(/*Object*/ args){
-	// summary
-	//		Returns an animation that will expand the
-	//		node defined in 'args' object from it's current height to
-	//		it's natural height (with no scrollbar).
-	//		Node must have no margin/border/padding.
-	args.node = dojo.byId(args.node);
-	var node = args.node, s = node.style, o;
-
-	var anim = dojo.animateProperty(dojo.mixin({
-		properties: {
-			height: {
-				// wrapped in functions so we wait till the last second to query (in case value has changed)
-				start: function(){
-					// start at current [computed] height, but use 1px rather than 0
-					// because 0 causes IE to display the whole panel
-					o = s.overflow;
-					s.overflow="hidden";
-					if(s.visibility=="hidden"||s.display=="none"){
-						s.height="1px";
-						s.display="";
-						s.visibility="";
-						return 1;
-					}else{
-						var height = dojo.style(node, "height");
-						return Math.max(height, 1);
-					}
-				},
-				end: function(){
-					return node.scrollHeight;
-				}
-			}
-		}
-	}, args));
-
-	dojo.connect(anim, "onEnd", function(){ 
-		s.height = "auto";
-		s.overflow = o;
-	});
-
-	return anim; // dojo._Animation
+if(this._onAnimateCtx){
+d.disconnect(this._onAnimateCtx);
 }
-
-dojo.fx.wipeOut = function(/*Object*/ args){
-	// summary
-	//		Returns an animation that will shrink node defined in "args"
-	//		from it's current height to 1px, and then hide it.
-	var node = args.node = dojo.byId(args.node);
-	var s = node.style;
-	var o;
-
-	var anim = dojo.animateProperty(dojo.mixin({
-		properties: {
-			height: {
-				end: 1 // 0 causes IE to display the whole panel
-			}
-		}
-	}, args));
-
-	dojo.connect(anim, "beforeBegin", function(){
-		o = s.overflow;
-		s.overflow = "hidden";
-		s.display = "";
-	});
-	dojo.connect(anim, "onEnd", function(){
-		s.overflow = o;
-		s.height = "auto";
-		s.display = "none";
-	});
-
-	return anim; // dojo._Animation
+this._onAnimateCtx=d.connect(this._current,"onAnimate",this,"_onAnimate");
+if(this._onEndCtx){
+d.disconnect(this._onEndCtx);
 }
-
-dojo.fx.slideTo = function(/*Object?*/ args){
-	// summary
-	//		Returns an animation that will slide "node" 
-	//		defined in args Object from its current position to
-	//		the position defined by (args.left, args.top).
-	// example:
-	//	|	dojo.fx.slideTo({ node: node, left:"40", top:"50", unit:"px" }).play()
-
-	var node = (args.node = dojo.byId(args.node));
-	
-	var top = null;
-	var left = null;
-	
-	var init = (function(n){
-		return function(){
-			var cs = dojo.getComputedStyle(n);
-			var pos = cs.position;
-			top = (pos == 'absolute' ? n.offsetTop : parseInt(cs.top) || 0);
-			left = (pos == 'absolute' ? n.offsetLeft : parseInt(cs.left) || 0);
-			if(pos != 'absolute' && pos != 'relative'){
-				var ret = dojo.coords(n, true);
-				top = ret.y;
-				left = ret.x;
-				n.style.position="absolute";
-				n.style.top=top+"px";
-				n.style.left=left+"px";
-			}
-		};
-	})(node);
-	init();
-
-	var anim = dojo.animateProperty(dojo.mixin({
-		properties: {
-			top: { end: args.top||0 },
-			left: { end: args.left||0 }
-		}
-	}, args));
-	dojo.connect(anim, "beforeBegin", anim, init);
-
-	return anim; // dojo._Animation
+this._onEndCtx=d.connect(this._current,"onEnd",this,"_onEnd");
+this._current.play.apply(this._current,arguments);
+return this;
+},pause:function(){
+if(this._current){
+var e=d.connect(this._current,"onPause",this,function(_d){
+this._fire("onPause",arguments);
+d.disconnect(e);
+});
+this._current.pause();
+}
+return this;
+},gotoPercent:function(_e,_f){
+this.pause();
+var _10=this.duration*_e;
+this._current=null;
+d.some(this._animations,function(a){
+if(a.duration<=_10){
+this._current=a;
+return true;
+}
+_10-=a.duration;
+return false;
+});
+if(this._current){
+this._current.gotoPercent(_10/this._current.duration,_f);
+}
+return this;
+},stop:function(_11){
+if(this._current){
+if(_11){
+for(;this._index+1<this._animations.length;++this._index){
+this._animations[this._index].stop(true);
+}
+this._current=this._animations[this._index];
+}
+var e=d.connect(this._current,"onStop",this,function(arg){
+this._fire("onStop",arguments);
+d.disconnect(e);
+});
+this._current.stop();
+}
+return this;
+},status:function(){
+return this._current?this._current.status():"stopped";
+},destroy:function(){
+if(this._onAnimateCtx){
+d.disconnect(this._onAnimateCtx);
+}
+if(this._onEndCtx){
+d.disconnect(this._onEndCtx);
+}
+}});
+d.extend(_4,_1);
+dojo.fx.chain=function(_12){
+return new _4(_12);
+};
+var _13=function(_14){
+this._animations=_14||[];
+this._connects=[];
+this._finished=0;
+this.duration=0;
+d.forEach(_14,function(a){
+var _15=a.duration;
+if(a.delay){
+_15+=a.delay;
+}
+if(this.duration<_15){
+this.duration=_15;
+}
+this._connects.push(d.connect(a,"onEnd",this,"_onEnd"));
+},this);
+this._pseudoAnimation=new d.Animation({curve:[0,1],duration:this.duration});
+var _16=this;
+d.forEach(["beforeBegin","onBegin","onPlay","onAnimate","onPause","onStop","onEnd"],function(evt){
+_16._connects.push(d.connect(_16._pseudoAnimation,evt,function(){
+_16._fire(evt,arguments);
+}));
+});
+};
+d.extend(_13,{_doAction:function(_17,_18){
+d.forEach(this._animations,function(a){
+a[_17].apply(a,_18);
+});
+return this;
+},_onEnd:function(){
+if(++this._finished>this._animations.length){
+this._fire("onEnd");
+}
+},_call:function(_19,_1a){
+var t=this._pseudoAnimation;
+t[_19].apply(t,_1a);
+},play:function(_1b,_1c){
+this._finished=0;
+this._doAction("play",arguments);
+this._call("play",arguments);
+return this;
+},pause:function(){
+this._doAction("pause",arguments);
+this._call("pause",arguments);
+return this;
+},gotoPercent:function(_1d,_1e){
+var ms=this.duration*_1d;
+d.forEach(this._animations,function(a){
+a.gotoPercent(a.duration<ms?1:(ms/a.duration),_1e);
+});
+this._call("gotoPercent",arguments);
+return this;
+},stop:function(_1f){
+this._doAction("stop",arguments);
+this._call("stop",arguments);
+return this;
+},status:function(){
+return this._pseudoAnimation.status();
+},destroy:function(){
+d.forEach(this._connects,dojo.disconnect);
+}});
+d.extend(_13,_1);
+dojo.fx.combine=function(_20){
+return new _13(_20);
+};
+dojo.fx.wipeIn=function(_21){
+var _22=_21.node=d.byId(_21.node),s=_22.style,o;
+var _23=d.animateProperty(d.mixin({properties:{height:{start:function(){
+o=s.overflow;
+s.overflow="hidden";
+if(s.visibility=="hidden"||s.display=="none"){
+s.height="1px";
+s.display="";
+s.visibility="";
+return 1;
+}else{
+var _24=d.style(_22,"height");
+return Math.max(_24,1);
+}
+},end:function(){
+return _22.scrollHeight;
+}}}},_21));
+d.connect(_23,"onEnd",function(){
+s.height="auto";
+s.overflow=o;
+});
+return _23;
+};
+dojo.fx.wipeOut=function(_25){
+var _26=_25.node=d.byId(_25.node),s=_26.style,o;
+var _27=d.animateProperty(d.mixin({properties:{height:{end:1}}},_25));
+d.connect(_27,"beforeBegin",function(){
+o=s.overflow;
+s.overflow="hidden";
+s.display="";
+});
+d.connect(_27,"onEnd",function(){
+s.overflow=o;
+s.height="auto";
+s.display="none";
+});
+return _27;
+};
+dojo.fx.slideTo=function(_28){
+var _29=_28.node=d.byId(_28.node),top=null,_2a=null;
+var _2b=(function(n){
+return function(){
+var cs=d.getComputedStyle(n);
+var pos=cs.position;
+top=(pos=="absolute"?n.offsetTop:parseInt(cs.top)||0);
+_2a=(pos=="absolute"?n.offsetLeft:parseInt(cs.left)||0);
+if(pos!="absolute"&&pos!="relative"){
+var ret=d.position(n,true);
+top=ret.y;
+_2a=ret.x;
+n.style.position="absolute";
+n.style.top=top+"px";
+n.style.left=_2a+"px";
+}
+};
+})(_29);
+_2b();
+var _2c=d.animateProperty(d.mixin({properties:{top:_28.top||0,left:_28.left||0}},_28));
+d.connect(_2c,"beforeBegin",_2c,_2b);
+return _2c;
+};
+})();
 }

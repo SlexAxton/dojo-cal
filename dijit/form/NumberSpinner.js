@@ -1,48 +1,38 @@
-dojo.provide("dijit.form.NumberSpinner");
+/*
+	Copyright (c) 2004-2009, The Dojo Foundation All Rights Reserved.
+	Available via Academic Free License >= 2.1 OR the modified BSD license.
+	see: http://dojotoolkit.org/license for details
+*/
 
+
+if(!dojo._hasResource["dijit.form.NumberSpinner"]){
+dojo._hasResource["dijit.form.NumberSpinner"]=true;
+dojo.provide("dijit.form.NumberSpinner");
 dojo.require("dijit.form._Spinner");
 dojo.require("dijit.form.NumberTextBox");
-
-dojo.declare(
-"dijit.form.NumberSpinner",
-[dijit.form._Spinner, dijit.form.NumberTextBoxMixin],
-{
-	// summary:
-	// extends NumberTextBox to add up/down arrows and pageup/pagedown for incremental change to the value
-
-	required: true,
-
-	adjust: function(/* Object */ val, /*Number*/ delta){
-		// summary: change Number val by the given amount
-		if(isNaN(val) && delta != 0){ // blank or invalid value and they want to spin, so create defaults
-			var increasing = (delta > 0),
-				gotMax = (typeof this.constraints.max == "number"),
-				gotMin = (typeof this.constraints.min == "number");
-			val = increasing? (gotMin? this.constraints.min : (gotMax? this.constraints.max : 0)) :
-					(gotMax? this.constraints.max : (gotMin? this.constraints.min : 0));
-		}
-		var newval = val+delta;
-		if(isNaN(val) || isNaN(newval)){ return val; }
-		if((typeof this.constraints.max == "number") && (newval > this.constraints.max)){
-			newval = this.constraints.max;
-		}
-		if((typeof this.constraints.min == "number") && (newval < this.constraints.min)){
-			newval = this.constraints.min;
-		}
-		return newval;
-	},
-	_onKeyPress: function(e){
-		if((e.charOrCode == dojo.keys.HOME || e.charOrCode == dojo.keys.END) && !e.ctrlKey && !e.altKey){
-			var value = e.charOrCode == dojo.keys.HOME ? this.constraints["min"] : this.constraints["max"];
-			if (value){
-				this._setValueAttr(value,true);
-			}
-			// eat home or end key whether we change the value or not
-			dojo.stopEvent(e);
-			return false;
-		}
-		else{
-			return this.inherited(arguments);
-		}
-	}
-});
+dojo.declare("dijit.form.NumberSpinner",[dijit.form._Spinner,dijit.form.NumberTextBoxMixin],{adjust:function(_1,_2){
+var tc=this.constraints,v=isNaN(_1),_3=!isNaN(tc.max),_4=!isNaN(tc.min);
+if(v&&_2!=0){
+_1=(_2>0)?_4?tc.min:_3?tc.max:0:_3?this.constraints.max:_4?tc.min:0;
+}
+var _5=_1+_2;
+if(v||isNaN(_5)){
+return _1;
+}
+if(_3&&(_5>tc.max)){
+_5=tc.max;
+}
+if(_4&&(_5<tc.min)){
+_5=tc.min;
+}
+return _5;
+},_onKeyPress:function(e){
+if((e.charOrCode==dojo.keys.HOME||e.charOrCode==dojo.keys.END)&&!(e.ctrlKey||e.altKey||e.metaKey)&&typeof this.attr("value")!="undefined"){
+var _6=this.constraints[(e.charOrCode==dojo.keys.HOME?"min":"max")];
+if(_6){
+this._setValueAttr(_6,true);
+}
+dojo.stopEvent(e);
+}
+}});
+}

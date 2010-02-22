@@ -1,7 +1,1 @@
-({
-	createLinkTitle: "Właściwości odsyłacza",
-	insertImageTitle: "Właściwości obrazu",
-	url: "Adres URL:",
-	text: "Opis:",
-	set: "Ustaw"
-})
+({"set":"Ustaw","text":"Opis:","insertImageTitle":"Właściwości obrazu","url":"Adres URL:","createLinkTitle":"Właściwości odsyłacza","newWindow":"New Window","topWindow":"Topmost Window","target":"Target:","parentWindow":"Parent Window","currentWindow":"Current Window"})
